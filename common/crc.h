@@ -1,13 +1,13 @@
 /************************************************************************
  * File: crc.h
  *
- *  Copyright 2019 United States Government as represented by the
- *  Administrator of the National Aeronautics and Space Administration.
- *  All Other Rights Reserved.
+ *  Copyright 2019 United States Government as represented by the 
+ *  Administrator of the National Aeronautics and Space Administration. 
+ *  All Other Rights Reserved.  
  *
  *  This software was created at NASA's Goddard Space Flight Center.
- *  This software is governed by the NASA Open Source Agreement and may be
- *  used, distributed and modified only pursuant to the terms of that
+ *  This software is governed by the NASA Open Source Agreement and may be 
+ *  used, distributed and modified only pursuant to the terms of that 
  *  agreement.
  *
  * Maintainer(s):
@@ -16,20 +16,24 @@
  *
  *************************************************************************/
 
-#ifndef _crc_h_
-#define _crc_h_
+#ifndef _BPLIB_CRC_H_
+#define _BPLIB_CRC_H_
 
 /******************************************************************************
  INCLUDES
  ******************************************************************************/
 
-#include "bplib.h"
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
 
 /******************************************************************************
  DEFINES
  ******************************************************************************/
 
 #define BYTE_COMBOS 256 /* Number of different possible bytes. */
+#define BP_CRC_INIT_SUCCESS 0 /* A sucessful return when initing a crc_parameters_t. */
+#define BP_CRC_INIT_FAIL_INVALID_LENGTH 1 /* The provided crc param struct has invalid length. */
 
 /******************************************************************************
  TYPEDEFS
@@ -58,7 +62,7 @@ typedef struct crc32_parameters
 /* Standard parameters for calculating a CRC. */
 typedef struct crc_parameters
 {
-    const char* name;           /* Name of the CRC. */
+    char* name;                 /* Name of the CRC. */
     int length;                 /* The number of bits in the CRC. */
     bool should_reflect_input;  /* Whether to reflect the bits of the input bytes. */
     bool should_reflect_output; /* Whether to reflect the bits of the output crc. */
@@ -78,4 +82,4 @@ typedef struct crc_parameters
 int         crc_init    (crc_parameters_t* params);
 uint32_t    crc_get     (const uint8_t* data, const uint32_t length, const crc_parameters_t* params);
 
-#endif /* _crc_h_ */
+#endif /* _BPLIB_CRC_H_ */

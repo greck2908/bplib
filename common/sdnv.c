@@ -26,8 +26,9 @@
  INCLUDES
  ******************************************************************************/
 
-#include "bplib.h"
 #include "sdnv.h"
+#include "bplib_os.h"
+#include "bplib.h"
 
 /******************************************************************************
  EXPORTED FUNCTIONS
@@ -43,7 +44,7 @@
  *  flags - pointer to variable that will hold the flags set as result of read [output]
  *  returns - next index (number of bytes read + starting index)
  *-------------------------------------------------------------------------------------*/
-int sdnv_read(uint8_t* block, int size, bp_field_t* sdnv, uint32_t* flags)
+int sdnv_read(uint8_t* block, int size, bp_sdnv_t* sdnv, uint16_t* flags)
 {
     assert(block);
     assert(sdnv);
@@ -57,34 +58,17 @@ int sdnv_read(uint8_t* block, int size, bp_field_t* sdnv, uint32_t* flags)
     else                 width = sdnv->width;
 
     /* Read SDNV */
-    for(i = sdnv->index; (i < (sdnv->index + width)) && (i < size); i++)
+    for(i = sdnv->index; (i < width) && (i < size); i++)
     {
-        /* Shift value and check for overflow */
-        bp_val_t tmpval = sdnv->value;
         sdnv->value <<= 7;
-        if(sdnv->value >> 7 != tmpval)
-        {
-            /* Set Overflow:
-             *  The right shift caused bits to be lost which means
-             *  the encoded value could not be stored in a bp_val_t */
-            *flags |= BP_FLAG_SDNV_OVERFLOW;
-        }
-        
-        /* OR in next byte */
         sdnv->value |= (block[i] & 0x7F);
+        if((block[i] & 0x80) == 0x00)  return (i + 1);
         
-        /* Check for end of SDNV */
-        if((block[i] & 0x80) == 0x00)
-        {
-            /* Success: return the next index */
-            return (i + 1);
-        }
+        else if(size < (i + 2)) *flags |= BP_FLAG_SDNVINCOMPLETE;
     }
 
-    /* Set Incomplete:
-     *  The SDNV wanted to keep going but the
-     *  block ended before it was complete */
-    *flags |= BP_FLAG_SDNV_INCOMPLETE;
+    /* Set Overflow  */
+    *flags |= BP_FLAG_SDNVOVERFLOW;
 
     /* Return Next Index */
     return i;
@@ -100,41 +84,39 @@ int sdnv_read(uint8_t* block, int size, bp_field_t* sdnv, uint32_t* flags)
  *  flags - pointer to variable that will hold the flags set as result of write [output]
  *  returns - next index (number of bytes read + starting index)
  *-------------------------------------------------------------------------------------*/
-int sdnv_write(uint8_t* block, int size, bp_field_t sdnv, uint32_t* flags)
+int sdnv_write(uint8_t* block, int size, bp_sdnv_t sdnv, uint16_t* flags)
 {
     assert(block);
     assert(flags);
 
-    int i, fixedwidth, endindex;
+    int i, maxbytes, endindex;
 
     /* Initialize Bytes to Write */
     if(sdnv.width <= 0)
     {
         /* Calculate Bytes Needed to Hold Value */
         bp_val_t tmpval = sdnv.value;
-        fixedwidth = 1;
-        while(tmpval > 0x7F)
+        maxbytes = 0;
+        while(tmpval > 0)
         {
-            fixedwidth++;
+            maxbytes++;
             tmpval >>= 7;
         }
     }
-    else
+    else if(sdnv.width <= (size - sdnv.index))
     {
         /* Set Fixed Width */
-        fixedwidth = sdnv.width;
+        maxbytes = sdnv.width;
     }
-    
-    /* Check for Truncation */
-    if(fixedwidth > (size - (int)sdnv.index))
+    else
     {
         /* Truncate Width */
-        *flags |= BP_FLAG_SDNV_INCOMPLETE;
-        fixedwidth = size - sdnv.index;
+        *flags |= BP_FLAG_SDNVINCOMPLETE;
+        maxbytes = size - sdnv.index;
     }
 
     /* Write SDNV */
-    endindex = fixedwidth + sdnv.index - 1;
+    endindex = maxbytes + sdnv.index - 1;
     for(i = endindex; i >= (int)sdnv.index; i--)
     {
         if(i == endindex)   block[i] = sdnv.value & 0x7F;
@@ -143,22 +125,8 @@ int sdnv_write(uint8_t* block, int size, bp_field_t sdnv, uint32_t* flags)
     }
 
     /* Set Overflow  */
-    if(sdnv.value > 0) *flags |= BP_FLAG_SDNV_OVERFLOW;
+    if(sdnv.value > 0) *flags |= BP_FLAG_SDNVOVERFLOW;
 
     /* Return Next Index */
-    return fixedwidth + sdnv.index;
-}
-
-/*--------------------------------------------------------------------------------------
- * sdnv_mask - truncates value to width
- *
- *  sdnv - pointer to sdnv that will be truncated [input/output]
- *-------------------------------------------------------------------------------------*/
-void sdnv_mask(bp_field_t* sdnv)
-{
-    int num_bits = sdnv->width * 7;
-    int max_bits = sizeof(bp_val_t) * 8;
-    int shift_bits = max_bits - num_bits;
-    bp_val_t val_mask = BP_MAX_ENCODED_VALUE >> shift_bits;
-    sdnv->value = sdnv->value & val_mask;
+    return maxbytes + sdnv.index;
 }

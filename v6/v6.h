@@ -15,15 +15,8 @@
  *
  *************************************************************************/
 
-#ifndef _v6_h_
-#define _v6_h_
-
-/******************************************************************************
- INCLUDES
- ******************************************************************************/
-
-#include "bundle_types.h"
-#include "rb_tree.h"
+#ifndef __BPLIB_V6_H__
+#define __BPLIB_V6_H__
 
 /******************************************************************************
  DEFINES
@@ -43,10 +36,7 @@
 /* Block Type Definitions */
 #define BP_PAY_BLK_TYPE                 0x1
 #define BP_CTEB_BLK_TYPE                0xA
-#define BP_BIB_BLK_TYPE                 0x3
-
-/* BIB Definitions */
-#define BP_BIB_INTEGRITY_SIGNATURE      5
+#define BP_BIB_BLK_TYPE                 0xD
 
 /* Record Type Definitions */    
 #define BP_STAT_REC_TYPE                0x10 /* Status Report */
@@ -54,9 +44,9 @@
 #define BP_ACS_REC_TYPE                 0x40 /* Aggregate Custody Signal */
 
 /* Aggregate Custody Signal Definitions */
-#define BP_ACS_REC_TYPE_INDEX           0
-#define BP_ACS_REC_STATUS_INDEX         1
-#define BP_ACS_ACK_MASK                 0x80    /* if set, then custody successfully transfered */
+#define BP_ACS_REC_TYPE_INDEX       0
+#define BP_ACS_REC_STATUS_INDEX     1
+#define BP_ACS_ACK_MASK             0x80    /* if set, then custody successfully transfered */
 
 /* Processing Control Flags */
 #define BP_PCF_FRAGMENT_MASK            0x000001    /* bundle is a fragement */
@@ -73,20 +63,4 @@
 #define BP_PCF_RPTDLV_MASK              0x020000    /* report delivery */
 #define BP_PCF_RPTDLT_MASK              0x040000    /* report deletion */
 
-/******************************************************************************
- EXPORTED FUNCTIONS
- ******************************************************************************/
-
-int v6_initialize               (void);
-int v6_create                   (bp_bundle_t* bundle, bp_route_t route, bp_attr_t attributes);
-int v6_destroy                  (bp_bundle_t* bundle);
-int v6_populate_bundle          (bp_bundle_t* bundle, uint32_t* flags);
-int v6_send_bundle              (bp_bundle_t* bundle, uint8_t* buffer, int size, bp_create_func_t create, void* parm, int timeout, uint32_t* flags);
-int v6_receive_bundle           (bp_bundle_t* bundle, uint8_t* buffer, int size, bp_payload_t* payload, uint32_t* flags);
-int v6_update_bundle            (bp_bundle_data_t* data, bp_val_t cid, uint32_t* flags);
-int v6_populate_acknowledgment  (uint8_t* rec, int size, int max_fills, rb_tree_t* tree, uint32_t* flags);
-int v6_receive_acknowledgment   (uint8_t* rec, int size, int* num_acks, bp_delete_func_t remove, void* parm, uint32_t* flags);
-int v6_routeinfo                (void* bundle, int size, bp_route_t* route);
-int v6_display                  (void* bundle, int size, uint32_t* flags);
-
-#endif  /* _v6_h_ */
+#endif  /* __BPLIB_V6_H__ */

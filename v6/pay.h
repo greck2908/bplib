@@ -15,23 +15,25 @@
  *
  *************************************************************************/
 
-#ifndef _pay_h_
-#define _pay_h_
+#ifndef __BPLIB_PAY_H__
+#define __BPLIB_PAY_H__
 
 /******************************************************************************
  INCLUDES
  ******************************************************************************/
 
 #include "bplib.h"
-#include "bundle_types.h"
+#include "bplib_os.h"
+#include "sdnv.h"
+#include "rb_tree.h"
 
 /******************************************************************************
  TYPEDEFS
  ******************************************************************************/
 
 typedef struct {
-    bp_field_t  bf;
-    bp_field_t  blklen;
+    bp_sdnv_t   bf;
+    bp_sdnv_t   blklen;
     uint8_t*    payptr;
     int         paysize;
 } bp_blk_pay_t;
@@ -40,7 +42,7 @@ typedef struct {
  PROTOTYPES
  ******************************************************************************/
 
-int pay_read      (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uint32_t* flags);
-int pay_write     (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uint32_t* flags);
+int pay_read      (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uint16_t* flags);
+int pay_write     (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uint16_t* flags);
 
-#endif  /* _pay_h_ */
+#endif  /* __BPLIB_PAY_H__ */

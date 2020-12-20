@@ -26,12 +26,16 @@ APP_OBJ += posix.o
 ##  OPTIONS
 
 # Optimization Level #
-APP_COPT += -O0
+O = 0
 
-# Build Unit Tests #
-BUILD_UNITTESTS=1
-APP_COPT += -DUNITTESTS
-APP_COPT += -DBP_LOCAL_SCOPE="" # removes static designator so that local functions can be unit tested
+# Disable Asserts #
+# APP_COPT += -DNDEBUG
+
+# Position Independent Code #
+APP_COPT += -fPIC
+
+# POSIX Compile Options #
+APP_COPT += -pthread
 
 # GNU Code Coverage # 
 APP_COPT += -fprofile-arcs -ftest-coverage
@@ -40,8 +44,16 @@ APP_LOPT += -lgcov --coverage
 # Enable Stack Checker #
 APP_COPT += -fstack-protector-all
 
+# Enable 32-bit Target #
+# APP_COPT += -m32
+# APP_LOPT += -m32
+
+# POSIX Libraries #
+APP_LOPT += -lpthread
+APP_LOPT += -lrt
+
 # Enable Toolchain Specific Checks #
-ifeq ($(CC), cc)
+ifeq ($(TOOLCHAIN), gcc)
 APP_COPT += -Wlogical-op
 endif
 

@@ -20,6 +20,7 @@
  ******************************************************************************/
 
 #include "bplib.h"
+#include "bplib_os.h"
 #include "sdnv.h"
 #include "pay.h"
 #include "v6.h"
@@ -38,20 +39,20 @@
  *
  *  Returns:    Next index
  *-------------------------------------------------------------------------------------*/
-int pay_read (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uint32_t* flags)
+int pay_read (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uint16_t* sdnvflags)
 {
     uint8_t* buffer = (uint8_t*)block;
     int bytes_read = 0;
-    uint32_t sdnvflags = 0;
+    uint16_t flags = 0;
 
     /* Check Size */
-    if(size < 1) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Invalid size of payload block: %d\n", size);
+    if(size < 1) return bplog(BP_BUNDLEPARSEERR, "Invalid size of payload block: %d\n", size);
 
     /* Read Block Information */
     if(!update_indices)
     {
-        sdnv_read(buffer, size, &pay->bf, &sdnvflags);
-        bytes_read = sdnv_read(buffer, size, &pay->blklen, &sdnvflags);
+        sdnv_read(buffer, size, &pay->bf, &flags);
+        bytes_read = sdnv_read(buffer, size, &pay->blklen, &flags);
     }
     else
     {
@@ -59,15 +60,15 @@ int pay_read (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uin
         pay->blklen.width = 0;
 
         pay->bf.index = 1;
-        pay->blklen.index = sdnv_read(buffer, size, &pay->bf, &sdnvflags);
-        bytes_read = sdnv_read(buffer, size, &pay->blklen, &sdnvflags);
+        pay->blklen.index = sdnv_read(buffer, size, &pay->bf, &flags);
+        bytes_read = sdnv_read(buffer, size, &pay->blklen, &flags);
     }
 
     /* Success Oriented Error Checking */
-    if(sdnvflags != 0)
+    if(flags != 0)
     {
-        *flags |= sdnvflags;
-        return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Flags raised during processing of payload block (%08X)\n", sdnvflags);
+        *sdnvflags |= flags;
+        return bplog(BP_BUNDLEPARSEERR, "Flags raised during processing of payload block (%08X)\n", flags);
     }
     else
     {
@@ -87,14 +88,14 @@ int pay_read (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uin
  *
  *  Returns:    Number of bytes processed of bundle
  *-------------------------------------------------------------------------------------*/
-int pay_write (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uint32_t* flags)
+int pay_write (void* block, int size, bp_blk_pay_t* pay, bool update_indices, uint16_t* sdnvflags)
 {
     uint8_t* buffer = (uint8_t*)block;
     int bytes_written = 0;
-    uint32_t sdnvflags = 0;
+    uint16_t flags = 0;
 
     /* Check Size */
-    if(size < 1) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Invalid size of payload block: %d\n", size);
+    if(size < 1) return bplog(BP_BUNDLEPARSEERR, "Invalid size of payload block: %d\n", size);
 
     /* Set Block Flags */
     pay->bf.value = 0;
@@ -108,8 +109,8 @@ int pay_write (void* block, int size, bp_blk_pay_t* pay, bool update_indices, ui
     buffer[0] = BP_PAY_BLK_TYPE;
     if(!update_indices)
     {
-        sdnv_write(buffer, size, pay->bf, &sdnvflags);
-        bytes_written = sdnv_write(buffer, size, pay->blklen, &sdnvflags);
+        sdnv_write(buffer, size, pay->bf, &flags);
+        bytes_written = sdnv_write(buffer, size, pay->blklen, &flags);
     }
     else
     {
@@ -117,15 +118,15 @@ int pay_write (void* block, int size, bp_blk_pay_t* pay, bool update_indices, ui
         pay->blklen.width = 0;
 
         pay->bf.index = 1;
-        pay->blklen.index = sdnv_write(buffer, size, pay->bf, &sdnvflags);
-        bytes_written = sdnv_write(buffer, size, pay->blklen, &sdnvflags);
+        pay->blklen.index = sdnv_write(buffer, size, pay->bf, &flags);
+        bytes_written = sdnv_write(buffer, size, pay->blklen, &flags);
     }
 
     /* Success Oriented Error Checking */
-    if(sdnvflags != 0)
+    if(flags != 0)
     {
-        *flags |= sdnvflags;
-        return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Flags raised during processing of payload block (%08X)\n", sdnvflags);
+        *sdnvflags |= flags;
+        return bplog(BP_BUNDLEPARSEERR, "Flags raised during processing of payload block (%08X)\n", flags);
     }
     else
     {
