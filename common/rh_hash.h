@@ -1,5 +1,5 @@
 /************************************************************************
- * File: sdnv.h
+ * File: rh_hash.h
  *
  *  Copyright 2019 United States Government as represented by the 
  *  Administrator of the National Aeronautics and Space Administration. 
@@ -14,31 +14,46 @@
  *  Joe-Paul Swinski, Code 582 NASA GSFC
  *
  *************************************************************************/
-
-#ifndef __BPLIB_SDNV_H__
-#define __BPLIB_SDNV_H__
+#ifndef _rh_hash_h_
+#define _rh_hash_h_
 
 /******************************************************************************
  INCLUDES
  ******************************************************************************/
 
 #include "bplib.h"
+#include "bundle_types.h"
 
 /******************************************************************************
  TYPEDEFS
  ******************************************************************************/
 
 typedef struct {
-    bp_val_t    value;
-    bp_val_t    index;
-    bp_val_t    width;
-} bp_sdnv_t;
+    bp_active_bundle_t  bundle;
+    bp_index_t          next;   // next entry in chain
+    bp_index_t          prev;   // previous entry in chain
+    bp_index_t          after;  // next entry added to hash (time ordered)
+    bp_index_t          before; // previous entry added to hash (time ordered)
+} rh_hash_node_t;
+
+typedef struct {
+    rh_hash_node_t*     table;
+    bp_index_t          size;
+    bp_index_t          num_entries;
+    bp_index_t          oldest_entry;
+    bp_index_t          newest_entry;
+} rh_hash_t;
 
 /******************************************************************************
- PROTOTYPES
+ EXPORTED FUNCTIONS
  ******************************************************************************/
 
-int sdnv_read(uint8_t* block, int size, bp_sdnv_t* sdnv, uint16_t* flags);
-int sdnv_write(uint8_t* block, int size, bp_sdnv_t sdnv, uint16_t* flags);
+int rh_hash_create      (rh_hash_t** rh_hash, int size);
+int rh_hash_destroy     (rh_hash_t* rh_hash);
+int rh_hash_add         (rh_hash_t* rh_hash, bp_active_bundle_t bundle, bool overwrite);
+int rh_hash_next        (rh_hash_t* rh_hash, bp_active_bundle_t* bundle);
+int rh_hash_remove      (rh_hash_t* rh_hash, bp_val_t cid, bp_active_bundle_t* bundle);
+int rh_hash_available   (rh_hash_t* rh_hash, bp_val_t cid);
+int rh_hash_count       (rh_hash_t* rh_hash);
 
-#endif  /* __BPLIB_SDNV_H__ */
+#endif /* _rh_hash_h_ */

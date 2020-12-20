@@ -1,13 +1,13 @@
 /************************************************************************
  * File: bib.c
  *
- *  Copyright 2019 United States Government as represented by the 
- *  Administrator of the National Aeronautics and Space Administration. 
- *  All Other Rights Reserved.  
+ *  Copyright 2019 United States Government as represented by the
+ *  Administrator of the National Aeronautics and Space Administration.
+ *  All Other Rights Reserved.
  *
  *  This software was created at NASA's Goddard Space Flight Center.
- *  This software is governed by the NASA Open Source Agreement and may be 
- *  used, distributed and modified only pursuant to the terms of that 
+ *  This software is governed by the NASA Open Source Agreement and may be
+ *  used, distributed and modified only pursuant to the terms of that
  *  agreement.
  *
  * Maintainer(s):
@@ -20,7 +20,6 @@
  ******************************************************************************/
 
 #include "bplib.h"
-#include "bplib_os.h"
 #include "sdnv.h"
 #include "crc.h"
 #include "v6.h"
@@ -30,8 +29,8 @@
  CRC DEFINITIONS
  ******************************************************************************/
 
-static crc_parameters_t crc16_x25 = {
-    .name                            = "CRC-16 X25", 
+BP_LOCAL_SCOPE crc_parameters_t crc16_x25 = {
+    .name                            = "CRC-16 X25",
     .length                          = 16,
     .should_reflect_input            = true,
     .should_reflect_output           = true,
@@ -39,14 +38,14 @@ static crc_parameters_t crc16_x25 = {
         .crc16 = {
             .generator_polynomial    = 0x1021,
             .initial_value           = 0xFFFF,
-            .final_xor               = 0xF0B8,
+            .final_xor               = 0xFFFF,
             .check_value             = 0x906E
         }
     }
 };
 
-static crc_parameters_t crc32_castagnoli = {
-    .name                         = "CRC-32 Castagnoli", 
+BP_LOCAL_SCOPE crc_parameters_t crc32_castagnoli = {
+    .name                         = "CRC-32 Castagnoli",
     .length                       = 32,
     .should_reflect_input         = true,
     .should_reflect_output        = true,
@@ -103,9 +102,9 @@ int bib_init (void)
 {
     int crc16_status = crc_init(&crc16_x25);
     int crc32_status = crc_init(&crc32_castagnoli);
-    
-    if(crc16_status == BP_CRC_INIT_SUCCESS && 
-       crc32_status == BP_CRC_INIT_SUCCESS)
+
+    if(crc16_status == BP_SUCCESS &&
+       crc32_status == BP_SUCCESS)
     {
         return BP_SUCCESS;
     }
@@ -113,7 +112,7 @@ int bib_init (void)
     {
         return BP_ERROR;
     }
-} 
+}
 
 /*--------------------------------------------------------------------------------------
  * bib_read -
@@ -125,75 +124,97 @@ int bib_init (void)
  *
  *  Returns:    Number of bytes read
  *-------------------------------------------------------------------------------------*/
-int bib_read (void* block, int size, bp_blk_bib_t* bib, bool update_indices, uint16_t* flags)
+int bib_read (void* block, int size, bp_blk_bib_t* bib, bool update_indices, uint32_t* flags)
 {
     uint8_t* buffer = (uint8_t*)block;
     int bytes_read = 0;
+    uint32_t sdnvflags = 0;
 
     /* Check Size */
-    if(size < 1) return BP_BUNDLEPARSEERR;
+    if(size < 1) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Invalid size of BIB block: %d\n", size);
 
     /* Check Block Type */
-    if(buffer[0] != BP_BIB_BLK_TYPE) return BP_BUNDLEPARSEERR;
+    if(buffer[0] != BP_BIB_BLK_TYPE) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Invalid BIB block type: %d\n", buffer[0]);
 
-    /* Read Integrity Information */
+    /* Read Block */
     if(!update_indices)
     {
-        sdnv_read(buffer, size, &bib->block_flags, flags);
-        sdnv_read(buffer, size, &bib->block_length, flags);
-        sdnv_read(buffer, size, &bib->security_target_count, flags);
-        sdnv_read(buffer, size, &bib->security_target_type, flags);
-        sdnv_read(buffer, size, &bib->security_target_sequence, flags);
-        sdnv_read(buffer, size, &bib->cipher_suite_id, flags);
-        sdnv_read(buffer, size, &bib->cipher_suite_flags, flags);
-        bytes_read = sdnv_read(buffer, size, &bib->security_result_count, flags);
-        if (bytes_read + 1 > size) return BP_BUNDLEPARSEERR;
+        sdnv_read(buffer, size, &bib->block_flags, &sdnvflags);
+        sdnv_read(buffer, size, &bib->block_length, &sdnvflags);
+        bytes_read = sdnv_read(buffer, size, &bib->security_target_count, &sdnvflags);
+
+        if (bytes_read + 1 > size) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "BIB block terminated prematurely: %d\n", bytes_read);
+        bib->security_target_type = buffer[bytes_read];
+        
+        sdnv_read(buffer, size, &bib->cipher_suite_id, &sdnvflags);
+        sdnv_read(buffer, size, &bib->cipher_suite_flags, &sdnvflags);
+        bytes_read = sdnv_read(buffer, size, &bib->compound_length, &sdnvflags);
+
+        if (bytes_read + 1 > size) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "BIB block terminated prematurely: %d\n", bytes_read);
         bib->security_result_type = buffer[bytes_read];
-        bytes_read = sdnv_read(buffer, size, &bib->security_result_length, flags);
+
+        bytes_read = sdnv_read(buffer, size, &bib->security_result_length, &sdnvflags);
     }
     else
     {
         bib->block_flags.width = 0;
         bib->block_length.width = 0;
         bib->security_target_count.width = 0;
-        bib->security_target_type.width = 0;
-        bib->security_target_sequence.width = 0;
         bib->cipher_suite_id.width = 0;
         bib->cipher_suite_flags.width = 0;
-        bib->security_result_count.width = 0;
+        bib->compound_length.width = 0;
         bib->security_result_length.width = 0;
 
         bib->block_flags.index = 1;
-        bib->block_length.index = sdnv_read(buffer, size, &bib->block_flags, flags);
-        bib->security_target_count.index = sdnv_read(buffer, size, &bib->block_length, flags);
-        bib->security_target_type.index = sdnv_read(buffer, size, &bib->security_target_count, flags);
-        bib->security_target_sequence.index = sdnv_read(buffer, size, &bib->security_target_type, flags);
-        bib->cipher_suite_id.index = sdnv_read(buffer, size, &bib->security_target_sequence, flags);
-        bib->cipher_suite_flags.index = sdnv_read(buffer, size, &bib->cipher_suite_id, flags);       
-        bib->security_result_count.index = sdnv_read(buffer, size, &bib->cipher_suite_flags, flags);
-        bytes_read = sdnv_read(buffer, size, &bib->security_result_count, flags);
-        if (bytes_read + 1 > size) return BP_BUNDLEPARSEERR;
+        bib->block_length.index             = sdnv_read(buffer, size, &bib->block_flags,                &sdnvflags);
+        bib->security_target_count.index    = sdnv_read(buffer, size, &bib->block_length,               &sdnvflags);
+        bytes_read                          = sdnv_read(buffer, size, &bib->security_target_count,      &sdnvflags);
+
+        if (bytes_read + 1 > size) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "BIB block terminated prematurely: %d\n", bytes_read);
+        bib->security_target_type = buffer[bytes_read];
+        bib->cipher_suite_id.index = bytes_read + 1;
+
+        bib->cipher_suite_flags.index       = sdnv_read(buffer, size, &bib->cipher_suite_id,            &sdnvflags);
+        bib->compound_length.index          = sdnv_read(buffer, size, &bib->cipher_suite_flags,         &sdnvflags);
+        bytes_read                          = sdnv_read(buffer, size, &bib->compound_length,            &sdnvflags);
+
+        if (bytes_read + 1 > size) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "BIB block terminated prematurely: %d\n", bytes_read);
         bib->security_result_type = buffer[bytes_read];
-        /* Reads the security_result length. */
         bib->security_result_length.index = bytes_read + 1;
-        bytes_read = sdnv_read(buffer, size, &bib->security_result_length, flags);
+
+        bytes_read = sdnv_read(buffer, size, &bib->security_result_length, &sdnvflags);
     }
 
-    if (bib->cipher_suite_id.value == BP_BIB_CRC16_X25 && bib->security_result_length.value == 2)
+    /* Read Integrity Check */
+    if (bib->security_target_type != BP_PAY_BLK_TYPE)
     {
-        if (bytes_read + 2 > size) return BP_BUNDLEPARSEERR;
-        bib->security_result_data.crc16 = *((uint16_t*) (buffer + bytes_read));
-        uint8_t* valptr = buffer + bytes_read; 
+        return bplog(flags, BP_FLAG_INVALID_BIB_TARGET_TYPE, "Invalid BIB target type: %d\n", bib->security_target_type);
+    }
+    else if (bib->security_result_type != BP_BIB_INTEGRITY_SIGNATURE)
+    {
+        return bplog(flags, BP_FLAG_INVALID_BIB_RESULT_TYPE, "Invalid BIB security result type: %d\n", bib->security_result_type);
+    }
+    else if (bib->cipher_suite_id.value == BP_BIB_CRC16_X25)
+    {
+        if ((bib->security_result_length.value != 2) || (bytes_read + 2 > size))
+        {
+            return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "BIB block terminated prematurely: %d\n", bytes_read);
+        }
+
+        uint8_t* valptr = buffer + bytes_read;
         bib->security_result_data.crc16 = 0;
         bib->security_result_data.crc16 |= (((uint16_t) valptr[0]) << 8);
         bib->security_result_data.crc16 |= ((uint16_t) valptr[1]);
         bytes_read += 2;
     }
-    else if (bib->cipher_suite_id.value == BP_BIB_CRC32_CASTAGNOLI && bib->security_result_length.value == 4)
+    else if (bib->cipher_suite_id.value == BP_BIB_CRC32_CASTAGNOLI)
     {
-        if (bytes_read + 4 > size) return BP_BUNDLEPARSEERR;
-        bib->security_result_data.crc32 = *((uint32_t*) (buffer + bytes_read));
-        uint8_t* valptr = buffer + bytes_read; 
+        if ((bib->security_result_length.value != 4) || (bytes_read + 4 > size)) 
+        {
+            return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "BIB block terminated prematurely: %d\n", bytes_read);
+        }
+
+        uint8_t* valptr = buffer + bytes_read;
         bib->security_result_data.crc32 = 0;
         bib->security_result_data.crc32 |= ((uint32_t) valptr[0]) << 24;
         bib->security_result_data.crc32 |= ((uint32_t) valptr[1]) << 16;
@@ -203,12 +224,19 @@ int bib_read (void* block, int size, bp_blk_bib_t* bib, bool update_indices, uin
     }
     else
     {
-        return BP_BUNDLEPARSEERR;
+        return bplog(flags, BP_FLAG_INVALID_CIPHER_SUITEID, "Invalid BIB cipher suite id: %d\n", bib->cipher_suite_id.value);
     }
 
     /* Success Oriented Error Checking */
-    if(*flags != 0) return BP_BUNDLEPARSEERR;
-    else            return bytes_read;
+    if(sdnvflags != 0)
+    {
+        *flags |= sdnvflags;
+        return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Flags raised during processing of BIB (%08X)\n", sdnvflags); 
+    }
+    else
+    {
+        return bytes_read;
+    }
 }
 
 /*--------------------------------------------------------------------------------------
@@ -221,13 +249,41 @@ int bib_read (void* block, int size, bp_blk_bib_t* bib, bool update_indices, uin
  *
  *  Returns:    Number of bytes written
  *-------------------------------------------------------------------------------------*/
-int bib_write (void* block, int size, bp_blk_bib_t* bib, bool update_indices, uint16_t* flags)
+int bib_write (void* block, int size, bp_blk_bib_t* bib, bool update_indices, uint32_t* flags)
 {
     uint8_t* buffer = (uint8_t*)block;
     int bytes_written = 0;
+    uint32_t sdnvflags = 0;
 
-    /* Check Size */
-    if(size < 1) return BP_BUNDLEPARSEERR;
+    /* Check Parameters */
+    if (size < 1)
+    {
+        return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Insufficient room for BIB block: %d\n", size);
+    }
+    else if (bib->security_target_type != BP_PAY_BLK_TYPE)
+    {
+        return bplog(flags, BP_FLAG_INVALID_BIB_TARGET_TYPE, "Invalid BIB target type: %d\n", bib->security_target_type);
+    }
+    else if (bib->security_result_type != BP_BIB_INTEGRITY_SIGNATURE)
+    {
+        return bplog(flags, BP_FLAG_INVALID_BIB_RESULT_TYPE, "Invalid BIB security result type: %d\n", bib->security_result_type);
+    }
+
+    /* Update BIB Lengths */
+    if (bib->cipher_suite_id.value == BP_BIB_CRC16_X25)
+    {
+        bib->compound_length.value = 4;
+        bib->security_result_length.value = 2;
+    }
+    else if (bib->cipher_suite_id.value == BP_BIB_CRC32_CASTAGNOLI)
+    {
+        bib->compound_length.value = 6;
+        bib->security_result_length.value = 4;        
+    }
+    else
+    {
+        return bplog(flags, BP_FLAG_INVALID_CIPHER_SUITEID, "Invalid BIB cipher suite id: %d\n", bib->cipher_suite_id.value);
+    }
 
     /* Set Block Flags */
     bib->block_flags.value |= BP_BLK_REPALL_MASK;
@@ -236,70 +292,78 @@ int bib_write (void* block, int size, bp_blk_bib_t* bib, bool update_indices, ui
     buffer[0] = BP_BIB_BLK_TYPE; /* block type */
     if(!update_indices)
     {
-        sdnv_write(buffer, size, bib->block_flags, flags);
-        sdnv_write(buffer, size, bib->block_length, flags); 
-        sdnv_write(buffer, size, bib->security_target_count, flags);
-        sdnv_write(buffer, size, bib->security_target_type, flags);
-        sdnv_write(buffer, size, bib->security_target_sequence, flags);
-        sdnv_write(buffer, size, bib->cipher_suite_id, flags);
-        sdnv_write(buffer, size, bib->cipher_suite_flags, flags);
-        bytes_written = sdnv_write(buffer, size, bib->security_result_count, flags);
-        if (bytes_written + 1 > size) return BP_BUNDLEPARSEERR;
+        sdnv_write(buffer, size, bib->block_flags,              &sdnvflags);
+        sdnv_write(buffer, size, bib->block_length,             &sdnvflags);
+        bytes_written = sdnv_write(buffer, size, bib->security_target_count,    &sdnvflags);
+
+        if (bytes_written + 1 > size) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Insufficient room for BIB block at: %d\n", bytes_written);
+        buffer[bytes_written] = bib->security_target_type;
+        
+        sdnv_write(buffer, size, bib->cipher_suite_id,          &sdnvflags);
+        sdnv_write(buffer, size, bib->cipher_suite_flags,       &sdnvflags);
+        bytes_written = sdnv_write(buffer, size, bib->compound_length, &sdnvflags);
+
+        if (bytes_written + 1 > size) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Insufficient room for BIB block at: %d\n", bytes_written);
         buffer[bytes_written] = bib->security_result_type;
+
+        bytes_written = sdnv_write(buffer, size, bib->security_result_length, &sdnvflags);
     }
     else
     {
         bib->block_flags.width = 0;
         bib->block_length.width = 0;
         bib->security_target_count.width = 0;
-        bib->security_target_type.width = 0;
-        bib->security_target_sequence.width = 0;
         bib->cipher_suite_id.width = 0;
         bib->cipher_suite_flags.width = 0;
-        bib->security_result_count.width = 0;
+        bib->compound_length.width = 0;
         bib->security_result_length.width = 0;
 
         bib->block_flags.index = 1;
-        bib->block_length.index = sdnv_write(buffer, size, bib->block_flags, flags);
-        bib->security_target_count.index = sdnv_write(buffer, size, bib->block_length, flags);
-        bib->security_target_type.index = sdnv_write(buffer, size, bib->security_target_count, flags);
-        bib->security_target_sequence.index = sdnv_write(buffer, size, bib->security_target_type, flags);
-        bib->cipher_suite_id.index = sdnv_write(buffer, size, bib->security_target_sequence, flags);
-        bib->cipher_suite_flags.index = sdnv_write(buffer, size, bib->cipher_suite_id, flags);       
-        bib->security_result_count.index = sdnv_write(buffer, size, bib->cipher_suite_flags, flags);
-        bytes_written = sdnv_write(buffer, size, bib->security_result_count, flags);
-        if (bytes_written + 1 > size) return BP_BUNDLEPARSEERR;
+        bib->block_length.index             = sdnv_write(buffer, size, bib->block_flags,            &sdnvflags);
+        bib->security_target_count.index    = sdnv_write(buffer, size, bib->block_length,           &sdnvflags);
+        bytes_written                       = sdnv_write(buffer, size, bib->security_target_count,  &sdnvflags);
+
+        if (bytes_written + 1 > size) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Insufficient room for BIB block at: %d\n", bytes_written);
+        buffer[bytes_written] = bib->security_target_type;
+        bib->cipher_suite_id.index = bytes_written + 1;
+
+        bib->cipher_suite_flags.index       = sdnv_write(buffer, size, bib->cipher_suite_id,        &sdnvflags);
+        bib->compound_length.index          = sdnv_write(buffer, size, bib->cipher_suite_flags,     &sdnvflags);
+        bytes_written                       = sdnv_write(buffer, size, bib->compound_length,        &sdnvflags);
+
+        if (bytes_written + 1 > size) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Insufficient room for BIB block at: %d\n", bytes_written);
         buffer[bytes_written] = bib->security_result_type;
         bib->security_result_length.index = bytes_written + 1;
+
+        bytes_written = sdnv_write(buffer, size, bib->security_result_length, &sdnvflags);
     }
-    
+
+    /* Write Integrity Check */
     if (bib->cipher_suite_id.value == BP_BIB_CRC16_X25)
     {
-        if (bytes_written + 2 > size) return BP_BUNDLEPARSEERR;
-        bib->security_result_length.value = 2; 
-        bytes_written = sdnv_write(buffer, size, bib->security_result_length, flags);
         to_big_endian16(bib->security_result_data.crc16, buffer + bytes_written);
         bytes_written += 2;
     }
     else if (bib->cipher_suite_id.value == BP_BIB_CRC32_CASTAGNOLI)
     {
-        if (bytes_written + 4 > size) return BP_BUNDLEPARSEERR;
-        bib->security_result_length.value = 4;
-        bytes_written = sdnv_write(buffer, size, bib->security_result_length, flags);
         to_big_endian32(bib->security_result_data.crc32, buffer + bytes_written);
         bytes_written += 4;
     }
-    else
-    {
-        return BP_BUNDLEPARSEERR;
-    }
 
+    /* Jam Block Length */
     bib->block_length.value = bytes_written - bib->security_target_count.index;
-    sdnv_write(buffer, size, bib->block_length, flags);
+    sdnv_write(buffer, size, bib->block_length, &sdnvflags);
 
     /* Success Oriented Error Checking */
-    if(*flags != 0) return BP_BUNDLEPARSEERR;
-    else            return bytes_written;
+    if(sdnvflags != 0)
+    {
+        *flags |= sdnvflags;
+        return BP_ERROR;
+    }
+    else
+    {
+        return bytes_written;
+    }
 }
 
 /*--------------------------------------------------------------------------------------
@@ -313,7 +377,7 @@ int bib_write (void* block, int size, bp_blk_bib_t* bib, bool update_indices, ui
  *
  *  Returns:    Number of bytes processed of bundle
  *-------------------------------------------------------------------------------------*/
-int bib_update (void* block, int size, void* payload, int payload_size, bp_blk_bib_t* bib, uint16_t* flags)
+int bib_update (void* block, int size, void* payload, int payload_size, bp_blk_bib_t* bib, uint32_t* flags)
 {
     assert(bib);
     assert(payload);
@@ -321,12 +385,13 @@ int bib_update (void* block, int size, void* payload, int payload_size, bp_blk_b
     uint8_t* buffer = (uint8_t*)block;
 
     /* Check Size */
-    if(size < (long)bib->security_result_length.value) return BP_BUNDLEPARSEERR;
+    int room_needed = bib->security_result_length.index + bib->security_result_length.width + bib->security_result_length.value;
+    if(size < room_needed) return bplog(flags, BP_FLAG_FAILED_TO_PARSE, "Insufficient room to update BIB block: %d < %d\n", size, room_needed);
 
     /* Calculate and Write Fragment Payload CRC */
     if(bib->cipher_suite_id.value == BP_BIB_CRC16_X25)
     {
-        bib->security_result_data.crc16 = (uint16_t) crc_get((uint8_t*)payload, payload_size, &crc16_x25); 
+        bib->security_result_data.crc16 = (uint16_t) crc_get((uint8_t*)payload, payload_size, &crc16_x25);
         uint8_t* valptr = buffer + bib->security_result_length.index + bib->security_result_length.width;
         to_big_endian16(bib->security_result_data.crc16, valptr);
     }
@@ -337,9 +402,8 @@ int bib_update (void* block, int size, void* payload, int payload_size, bp_blk_b
         to_big_endian32(bib->security_result_data.crc32, valptr);
     }
 
-    /* Check for Errors */
-    if(*flags != 0) return BP_BUNDLEPARSEERR;
-    else            return BP_SUCCESS;
+    /* Return Success */
+    return BP_SUCCESS;
 }
 
 /*--------------------------------------------------------------------------------------
@@ -351,12 +415,10 @@ int bib_update (void* block, int size, void* payload, int payload_size, bp_blk_b
  *
  *  Returns:    success or error code
  *-------------------------------------------------------------------------------------*/
-int bib_verify (void* payload, int payload_size, bp_blk_bib_t* bib, uint16_t* flags)
+int bib_verify (void* payload, int payload_size, bp_blk_bib_t* bib, uint32_t* flags)
 {
     assert(payload);
     assert(bib);
-    
-    (void)flags;
 
     /* Calculate and Verify Payload CRC */
     if(bib->cipher_suite_id.value == BP_BIB_CRC16_X25)
@@ -365,7 +427,8 @@ int bib_verify (void* payload, int payload_size, bp_blk_bib_t* bib, uint16_t* fl
         if(bib->security_result_data.crc16 != crc)
         {
             /* Return Failure */
-            return BP_FAILEDINTEGRITYCHECK;
+            *flags |= BP_FLAG_FAILED_INTEGRITY_CHECK;
+            return BP_ERROR;
         }
     }
     else if(bib->cipher_suite_id.value == BP_BIB_CRC32_CASTAGNOLI)
@@ -374,7 +437,8 @@ int bib_verify (void* payload, int payload_size, bp_blk_bib_t* bib, uint16_t* fl
         if(bib->security_result_data.crc32 != crc)
         {
             /* Return Failure */
-            return BP_FAILEDINTEGRITYCHECK;
+            *flags |= BP_FLAG_FAILED_INTEGRITY_CHECK;
+            return BP_ERROR;
         }
     }
 

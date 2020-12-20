@@ -15,35 +15,34 @@
  *
  *************************************************************************/
 
-#ifndef __BPLIB_CTEB_H__
-#define __BPLIB_CTEB_H__
+#ifndef _cteb_h_
+#define _cteb_h_
 
 /******************************************************************************
  INCLUDES
  ******************************************************************************/
 
 #include "bplib.h"
-#include "bplib_os.h"
-#include "sdnv.h"
+#include "bundle_types.h"
 
 /******************************************************************************
  TYPEDEFS
  ******************************************************************************/
 
 typedef struct {
-    bp_sdnv_t bf;
-    bp_sdnv_t blklen;
-    bp_sdnv_t cid;
-    char      csteid[BP_MAX_EID_STRING];
-    bp_ipn_t  cstnode;
-    bp_ipn_t  cstserv;
+    bp_field_t  bf;
+    bp_field_t  blklen;
+    bp_field_t  cid;
+    char        csteid[BP_MAX_EID_STRING];
+    bp_ipn_t    cstnode;
+    bp_ipn_t    cstserv;
 } bp_blk_cteb_t;
 
 /******************************************************************************
  PROTOTYPES
  ******************************************************************************/
 
-int cteb_read     (void* block, int size, bp_blk_cteb_t* cteb, bool update_indices, uint16_t* flags);
-int cteb_write    (void* block, int size, bp_blk_cteb_t* cteb, bool update_indices, uint16_t* flags);
+int cteb_read     (void* block, int size, bp_blk_cteb_t* cteb, bool update_indices, uint32_t* flags);
+int cteb_write    (void* block, int size, bp_blk_cteb_t* cteb, bool update_indices, uint32_t* flags);
 
-#endif  /* __BPLIB_CTEB_H__ */
+#endif  /* _cteb_h_ */

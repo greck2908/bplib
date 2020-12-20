@@ -1,13 +1,13 @@
 /************************************************************************
  * File: bplib.h
  *
- *  Copyright 2019 United States Government as represented by the 
- *  Administrator of the National Aeronautics and Space Administration. 
- *  All Other Rights Reserved.  
+ *  Copyright 2019 United States Government as represented by the
+ *  Administrator of the National Aeronautics and Space Administration.
+ *  All Other Rights Reserved.
  *
  *  This software was created at NASA's Goddard Space Flight Center.
- *  This software is governed by the NASA Open Source Agreement and may be 
- *  used, distributed and modified only pursuant to the terms of that 
+ *  This software is governed by the NASA Open Source Agreement and may be
+ *  used, distributed and modified only pursuant to the terms of that
  *  agreement.
  *
  * Maintainer(s):
@@ -15,90 +15,89 @@
  *
  *************************************************************************/
 
-#ifndef __BPLIB_H__
-#define __BPLIB_H__
+#ifndef _bplib_h_
+#define _bplib_h_
 
 #ifdef __cplusplus
 extern "C" {
-#endif 
-    
+#endif
+
 /******************************************************************************
  INCLUDES
  ******************************************************************************/
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <limits.h>
+#include "bplib_os.h"
 
 /******************************************************************************
  DEFINES
  ******************************************************************************/
 
-/* Handles and Descriptors */
-#define BP_INVALID_HANDLE               (-1)    // used for integers (os locks, storage services)
-#define BP_INVALID_DESCRIPTOR           NULL    // used for pointers (channels)
-    
+/* Return Codes */
+#define BP_SUCCESS                      0
+#define BP_ERROR                        (-1)
+#define BP_TIMEOUT                      (-2)
+
+/* Event Flags */
+#define BP_FLAG_DIAGNOSTIC              0x00000000
+#define BP_FLAG_NONCOMPLIANT            0x00000001   /* valid bundle but agent not able to comply with standard */
+#define BP_FLAG_INCOMPLETE              0x00000002   /* block in bundle was not recognized */
+#define BP_FLAG_UNRELIABLE_TIME         0x00000004   /* the os call to get time return a suspicious value */
+#define BP_FLAG_DROPPED                 0x00000008   /* bundle dropped because a required extension block could not be processed */
+#define BP_FLAG_FAILED_INTEGRITY_CHECK  0x00000010   /* bundle with BIB failed the integrity check on the payload */
+#define BP_FLAG_BUNDLE_TOO_LARGE        0x00000020   /* size of bundle exceeds capacity allowed by library */
+#define BP_FLAG_ROUTE_NEEDED            0x00000040   /* the bundle returned should be routed before transmission */
+#define BP_FLAG_STORE_FAILURE           0x00000080   /* storage service failed to deliver data */
+#define BP_FLAG_UNKNOWN_CID             0x00000100   /* received CID in acknowledgment for which no bundle was found */
+#define BP_FLAG_SDNV_OVERFLOW           0x00000200   /* insufficient room in variable to read/write value */
+#define BP_FLAG_SDNV_INCOMPLETE         0x00000400   /* insufficient room in block to read/write value */
+#define BP_FLAG_ACTIVE_TABLE_WRAP       0x00000800   /* the active table wrapped */
+#define BP_FLAG_DUPLICATES              0x00001000   /* multiple bundles on the network have the same custody id */
+#define BP_FLAG_CUSTODY_FULL            0x00002000   /* the dacs rb_tree was full */
+#define BP_FLAG_UNKNOWNREC              0x00004000   /* bundle contained unknown adminstrative record */
+#define BP_FLAG_INVALID_CIPHER_SUITEID  0x00008000   /* invalid cipher suite ID found in BIB */
+#define BP_FLAG_INVALID_BIB_RESULT_TYPE 0x00010000   /* invalid result type found in BIB */
+#define BP_FLAG_INVALID_BIB_TARGET_TYPE 0x00020000   /* invalid target type found in BIB */
+#define BP_FLAG_FAILED_TO_PARSE         0x00040000   /* unable to parse bundle due to internal inconsistencies in bundle */
+#define BP_FLAG_API_ERROR               0x00080000   /* calling code incorrectly used library */ 
+
+/* Handles */
+#define BP_INVALID_HANDLE               (-1)    /* used for integers (os locks, storage services) */
+
 /* Timeouts */
 #define BP_PEND                         (-1)
 #define BP_CHECK                        0
 
-/* Endpoint ID Strings */    
+/* Endpoint IDs */
 #define BP_MAX_EID_STRING               128
+#define BP_IPN_NULL                     0
 
 /* Storage IDs */
 #define BP_SID_VACANT                   0
 
-/* Wrap Responses */
-#define BP_WRAP_RESEND                  0
-#define BP_WRAP_BLOCK                   1
-#define BP_WRAP_DROP                    2
+/* Storage Service Types */
+#define BP_STORE_DATA_TYPE              0xB0
+#define BP_STORE_DACS_TYPE              0xB1
+#define BP_STORE_PAYLOAD_TYPE           0xB2
+
+/* Error Correcting Codes */
+#define BP_ECC_NO_ERRORS                0
+#define BP_ECC_COR_ERRORS               (-1)
+#define BP_ECC_UNCOR_ERRORS             (-2)
+
+/* Class of Service */
+#define BP_COS_BULK                     0
+#define BP_COS_NORMAL                   1
+#define BP_COS_EXPEDITED                2
+#define BP_COS_EXTENDED                 3
 
 /* Bundle Integrity Types */
 #define BP_BIB_NONE                     0
-#define BP_BIB_CRC16_X25                1
-#define BP_BIB_CRC32_CASTAGNOLI         2
+#define BP_BIB_CRC16_X25                10
+#define BP_BIB_CRC32_CASTAGNOLI         11
 
-/* Return Codes */            
-#define BP_SUCCESS                      1
-#define BP_TIMEOUT                      0
-#define BP_ERROR                        (-1)
-#define BP_PARMERR                      (-2)
-#define BP_UNSUPPORTED                  (-3)
-#define BP_EXPIRED                      (-4)
-#define BP_DROPPED                      (-5)
-#define BP_INVALIDHANDLE                (-6)
-#define BP_OVERFLOW                     (-7)
-#define BP_WRONGVERSION                 (-8)
-#define BP_BUNDLEPARSEERR               (-9)
-#define BP_UNKNOWNREC                   (-10)
-#define BP_BUNDLETOOLARGE               (-11)
-#define BP_PAYLOADTOOLARGE              (-12)
-#define BP_WRONGCHANNEL                 (-13)
-#define BP_FAILEDINTEGRITYCHECK         (-14)
-#define BP_FAILEDSTORE                  (-15)
-#define BP_FAILEDOS                     (-16)
-#define BP_FAILEDMEM                    (-17)
-#define BP_FAILEDRESPONSE               (-18)
-#define BP_INVALIDEID                   (-19)
-#define BP_INVALIDCIPHERSUITEID         (-20)
-#define BP_PENDINGACKNOWLEDGMENT        (-21)
-#define BP_PENDINGCUSTODYTRANSFER       (-22)
-
-/* Processing, Acceptance,and Load Flags */
-#define BP_FLAG_NONCOMPLIANT            0x0001  /* valid bundle but agent not able to comply with standard */
-#define BP_FLAG_INCOMPLETE              0x0002  /* block in bundle was not recognized */
-#define BP_FLAG_UNRELIABLETIME          0x0004  /* the os call to get time return a suspicious value */
-#define BP_FLAG_FILLOVERFLOW            0x0008  /* a gap in the CIDs exceeds the max fill */
-#define BP_FLAG_TOOMANYFILLS            0x0010  /* all the fills in the ACS are used */
-#define BP_FLAG_CIDWENTBACKWARDS        0x0020  /* the custody ID went backwards */
-#define BP_FLAG_ROUTENEEDED             0x0040  /* the bundle returned needs to be routed before transmission */
-#define BP_FLAG_STOREFAILURE            0x0080  /* storage service failed to deliver data */
-#define BP_FLAG_RESERVED02              0x0100
-#define BP_FLAG_SDNVOVERFLOW            0x0200  /* insufficient room in variable to read/write value */
-#define BP_FLAG_SDNVINCOMPLETE          0x0400  /* insufficient room in block to read/write value */
-#define BP_FLAG_ACTIVETABLEWRAP         0x0800  /* the active table wrapped */
-#define BP_FLAG_DUPLICATES              0x1000  /* duplicate bundle ids were identified when creating this dacs */
-#define BP_FLAG_RBTREEFULL              0x2000  /* the dacs rb_tree was full */
+/* Retransmit Order */
+#define BP_RETX_OLDEST_BUNDLE           0
+#define BP_RETX_SMALLEST_CID            1
 
 /* Set/Get Option Modes */
 #define BP_OPT_MODE_READ                0
@@ -110,44 +109,45 @@ extern "C" {
 #define BP_OPT_ADMIN_RECORD             3
 #define BP_OPT_INTEGRITY_CHECK          4
 #define BP_OPT_ALLOW_FRAGMENTATION      5
-#define BP_OPT_CIPHER_SUITE             6
-#define BP_OPT_TIMEOUT                  7
-#define BP_OPT_MAX_LENGTH               8
-#define BP_OPT_WRAP_RESPONSE            9
-#define BP_OPT_CID_REUSE                10
-#define BP_OPT_DACS_RATE                11
-    
+#define BP_OPT_IGNORE_EXPIRATION        6
+#define BP_OPT_CID_REUSE                7
+#define BP_OPT_CIPHER_SUITE             8
+#define BP_OPT_CLASS_OF_SERVICE         9
+#define BP_OPT_TIMEOUT                  10
+#define BP_OPT_MAX_LENGTH               11
+#define BP_OPT_DACS_RATE                12
+
 /* Default Dynamic Configuration */
-#define BP_DEFAULT_LIFETIME             0
+#define BP_DEFAULT_LIFETIME             86400 /* seconds, 1 day */
 #define BP_DEFAULT_REQUEST_CUSTODY      true
 #define BP_DEFAULT_ADMIN_RECORD         false
 #define BP_DEFAULT_INTEGRITY_CHECK      true
 #define BP_DEFAULT_ALLOW_FRAGMENTATION  false
-#define BP_DEFAULT_TIMEOUT              10 /* seconds */
-#define BP_DEFAULT_MAX_LENGTH           4096
-#define BP_DEFAULT_WRAP_RESPONSE        BP_WRAP_RESEND
+#define BP_DEFAULT_IGNORE_EXPIRATION    false
 #define BP_DEFAULT_CID_REUSE            false
-#define BP_DEFAULT_DACS_RATE            5 /* period in seconds */
 #define BP_DEFAULT_CIPHER_SUITE         BP_BIB_CRC16_X25
+#define BP_DEFAULT_CLASS_OF_SERVICE     BP_COS_NORMAL
+#define BP_DEFAULT_TIMEOUT              10 /* seconds */
+#define BP_DEFAULT_MAX_LENGTH           4096 /* bytes (must be smaller than BP_MAX_INDEX) */
+#define BP_DEFAULT_DACS_RATE            5 /* period in seconds */
 
 /* Default Fixed Configuration */
-#define BP_DEFAULT_ACTIVE_TABLE_SIZE    16384
-#define BP_DEFAULT_MAX_FILLS_PER_DACS   64
-#define BP_DEFAULT_MAX_GAPS_PER_DACS    1028
+#define BP_DEFAULT_PROTOCOL_VERSION     6
+#define BP_DEFAULT_RETRANSMIT_ORDER     BP_RETX_OLDEST_BUNDLE
+#define BP_DEFAULT_ACTIVE_TABLE_SIZE    16384 /* bundles (must be smaller than BP_MAX_INDEX) */
+#define BP_DEFAULT_MAX_FILLS_PER_DACS   64 /* constrains size of DACS bundle */
+#define BP_DEFAULT_MAX_GAPS_PER_DACS    1028 /* sets size of internal memory used to aggregate custody */
+#define BP_DEFAULT_PERSISTENT_STORAGE   false
 #define BP_DEFAULT_STORAGE_SERVICE_PARM NULL
 
-/* Maximum Encoded Value */
-#define BP_MAX_ENCODED_VALUE            ULONG_MAX
-    
 /******************************************************************************
  TYPEDEFS
  ******************************************************************************/
 
 /* Channel Descriptor */
-typedef void* bp_desc_t;
-
-/* Encoded Value */
-typedef unsigned long bp_val_t;
+typedef struct {
+    void* channel;
+} bp_desc_t;
 
 /* IPN Schema Endpoint ID Integer Definition */
 typedef bp_val_t bp_ipn_t;
@@ -163,90 +163,110 @@ typedef struct {
 } bp_route_t;
 
 /* Storage ID */
-typedef void* bp_sid_t;
+typedef unsigned long bp_sid_t;
 
-/* Storage API */
-typedef int (*bp_store_create_t)    (void* parm);
-typedef int (*bp_store_destroy_t)   (int handle);
-typedef int (*bp_store_enqueue_t)   (int handle, void* data1, int data1_size, void* data2, int data2_size, int timeout);
-typedef int (*bp_store_dequeue_t)   (int handle, void** data, int* size, bp_sid_t* sid, int timeout);
-typedef int (*bp_store_retrieve_t)  (int handle, void** data, int* size, bp_sid_t sid, int timeout);
-typedef int (*bp_store_relinquish_t)(int handle, bp_sid_t sid);
-typedef int (*bp_store_getcount_t)  (int handle);
+/* Storage Object Header */
+typedef struct {
+    int         handle;
+    int         size;
+    bp_sid_t    sid;
+} bp_object_hdr_t;
+
+/* Storage Object */
+typedef struct {
+    bp_object_hdr_t header;
+    char            data[];
+} bp_object_t;
 
 /* Storage Service */
 typedef struct {
-    bp_store_create_t       create;
-    bp_store_destroy_t      destroy;
-    bp_store_enqueue_t      enqueue;
-    bp_store_dequeue_t      dequeue;
-    bp_store_retrieve_t     retrieve;
-    bp_store_relinquish_t   relinquish;
-    bp_store_getcount_t     getcount;
+    int (*create)       (int type, bp_ipn_t node, bp_ipn_t service, bool recover, void* parm);
+    int (*destroy)      (int handle);
+    int (*enqueue)      (int handle, void* data1, int data1_size, void* data2, int data2_size, int timeout);
+    int (*dequeue)      (int handle, bp_object_t** object, int timeout);
+    int (*retrieve)     (int handle, bp_sid_t sid, bp_object_t** object, int timeout);
+    int (*release)      (int handle, bp_sid_t sid);
+    int (*relinquish)   (int handle, bp_sid_t sid);
+    int (*getcount)     (int handle);
 } bp_store_t;
 
 /* Channel Attributes */
-typedef struct {    
+typedef struct {
     /* Dynamic Attributes */
     bp_val_t    lifetime;               /* Number of seconds from creation time before bundle expires */
-    bool        request_custody;        /* 0: not requested, 1: requested */
-    bool        admin_record;           /* 0: payload data, 1: administrative record */ 
+    bool        request_custody;        /* 0: custody not requested, 1: custody requested */
+    bool        admin_record;           /* 0: payload data, 1: administrative record */
     bool        integrity_check;        /* 0: do not include an integrity check, 1: include bundle integrity block */
     bool        allow_fragmentation;    /* 0: do not allow, 1: allow (for created bundles, if allowed, it will be used) */
+    bool        ignore_expiration;      /* 0: delete expired bundles, 1: ignore lifetime and do not delete expired bundles */
+    bool        cid_reuse;              /* 0: new CID when retransmitting, 1: reuse CID when retransmitting */
     int         cipher_suite;           /* 0: present but un-populated, all other values identify a cipher suite */
+    int         class_of_service;       /* priority of generated bundles */
     int         timeout;                /* seconds, zero for infinite */
-    int         max_length;             /* maximum size of bundle in bytes (includes header blocks) */
-    int         wrap_response;          /* what to do when active table wraps */
-    int         cid_reuse;              /* reuse CID when retransmitting */
-    int         dacs_rate;              /* number of seconds to wait between sending ACS bundles */
+    int         max_length;             /* maximum size of bundle in bytes */
+    int         dacs_rate;              /* number of seconds to wait between sending ACS bundles (<=0: no periodic dacs) */
     /* Fixed Attributes */
+    int         protocol_version;       /* bundle protocol version; currently only version 6 supported */
+    int         retransmit_order;       /* determination of which timed-out bundle is retransmitted first */
     int         active_table_size;      /* number of unacknowledged bundles to keep track of */
     int         max_fills_per_dacs;     /* limits the size of the DACS bundle */
     int         max_gaps_per_dacs;      /* number of gaps in custody IDs that can be kept track of */
+    bool        persistent_storage;     /* attempt to recover bundles and payloads from storage service */
     void*       storage_service_parm;   /* pass through of parameters needed by storage service */
 } bp_attr_t;
 
 /* Channel Statistics */
 typedef struct {
-    uint32_t    lost;           /* storage or copy failure, unable to retrieve load, accept */
-    uint32_t    expired;        /* lifetime expired, deliberately removed - load, process */
-    uint32_t    acknowledged;   /* freed by custody signal - process */
-    uint32_t    transmitted;    /* sent, includes re-sends - load */
-    uint32_t    retransmitted;  /* timed-out and resent - load */
-    uint32_t    received;       /* bundles processed - process */
-    uint32_t    generated;      /* bundles generated - store */
-    uint32_t    delivered;      /* payloads accepted  - accept */
-    uint32_t    bundles;        /* number of data bundles currently in storage */
-    uint32_t    payloads;       /* number of payloads currently in storage */
-    uint32_t    records;        /* number of dacs bundles currently in storage */
-    uint32_t    active;         /* number of slots in active table in use */
+    /* Errors */
+    uint32_t    lost;                   /* storage failure (load, process, accept) */
+    uint32_t    expired;                /* bundles, dacs, and payloads with expired lifetime (load, process, accept) */
+    uint32_t    unrecognized;           /* unable to parse input OR bundle type not supported (process) */
+    /* Data Flow */
+    uint32_t    transmitted_bundles;    /* bundles sent for first time, does not includes re-sends (load) */
+    uint32_t    transmitted_dacs;       /* dacs sent (load) */
+    uint32_t    retransmitted_bundles;  /* bundles timed-out and resent (load) */
+    uint32_t    delivered_payloads;     /* payloads delivered to application (accept) */
+    uint32_t    received_bundles;       /* bundles destined for local node (process) */
+    uint32_t    forwarded_bundles;      /* bundles received by local node but destined for another node (process) */
+    uint32_t    received_dacs;          /* dacs destined for local node (process) */
+    /* Storage */
+    uint32_t    stored_bundles;         /* number of data bundles currently in storage */
+    uint32_t    stored_payloads;        /* number of payloads currently in storage */
+    uint32_t    stored_dacs;            /* number of dacs bundles currently in storage */
+    /* Active */
+    uint32_t    acknowledged_bundles;   /* freed by custody signal - process */
+    uint32_t    active_bundles;         /* number of slots in active table in use */
 } bp_stats_t;
 
 /******************************************************************************
  PROTOTYPES
  ******************************************************************************/
 
-void        bplib_init          (void);
+int         bplib_init          (void);
 
-bp_desc_t   bplib_open          (bp_route_t route, bp_store_t store, bp_attr_t* attributes);
-void        bplib_close         (bp_desc_t channel);
+bp_desc_t*  bplib_open          (bp_route_t route, bp_store_t store, bp_attr_t attributes);
+void        bplib_close         (bp_desc_t* desc);
 
-int         bplib_flush         (bp_desc_t channel);
-int         bplib_config        (bp_desc_t channel, int mode, int opt, void* val, int len);
-int         bplib_latchstats    (bp_desc_t channel, bp_stats_t* stats);
+int         bplib_flush         (bp_desc_t* desc);
+int         bplib_config        (bp_desc_t* desc, int mode, int opt, int* val);
+int         bplib_latchstats    (bp_desc_t* desc, bp_stats_t* stats);
 
-int         bplib_store         (bp_desc_t channel, void* payload, int size, int timeout, uint16_t* flags);
-int         bplib_load          (bp_desc_t channel, void** bundle,  int size, int timeout, uint16_t* flags); 
-int         bplib_process       (bp_desc_t channel, void* bundle,  int size, int timeout, uint16_t* flags);
-int         bplib_accept        (bp_desc_t channel, void** payload, int size, int timeout, uint16_t* flags);
+int         bplib_store         (bp_desc_t* desc, void* payload, int size, int timeout, uint32_t* flags);
+int         bplib_load          (bp_desc_t* desc, void** bundle, int* size, int timeout, uint32_t* flags);
+int         bplib_process       (bp_desc_t* desc, void* bundle, int size, int timeout, uint32_t* flags);
+int         bplib_accept        (bp_desc_t* desc, void** payload, int* size, int timeout, uint32_t* flags);
+
+int         bplib_ackbundle     (bp_desc_t* desc, void* bundle);
+int         bplib_ackpayload    (bp_desc_t* desc, void* payload);
 
 int         bplib_routeinfo     (void* bundle, int size, bp_route_t* route);
+int         bplib_display       (void* bundle, int size, uint32_t* flags);
 int         bplib_eid2ipn       (const char* eid, int len, bp_ipn_t* node, bp_ipn_t* service);
 int         bplib_ipn2eid       (char* eid, int len, bp_ipn_t node, bp_ipn_t service);
-int         bplib_attrinit      (bp_attr_t* attr);
+int         bplib_attrinit      (bp_attr_t* attributes);
 
 #ifdef __cplusplus
 } // extern "C"
-#endif 
+#endif
 
-#endif  /* __BPLIB_H__ */
+#endif  /* _bplib_h_ */

@@ -15,8 +15,8 @@
  *
  *************************************************************************/
 
-#ifndef __BPLIB_STORE_RAM__
-#define __BPLIB_STORE_RAM__
+#ifndef _bplib_store_ram_h_
+#define _bplib_store_ram_h_
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,11 +36,12 @@ extern "C" {
 void    bplib_store_ram_init           (void);
 
 /* Service API */
-int     bplib_store_ram_create         (void* parm);
+int     bplib_store_ram_create         (int type, bp_ipn_t node, bp_ipn_t service, bool recover, void* parm);
 int     bplib_store_ram_destroy        (int handle);
 int     bplib_store_ram_enqueue        (int handle, void* data1, int data1_size, void* data2, int data2_size, int timeout);
-int     bplib_store_ram_dequeue        (int handle, void** data, int* size, bp_sid_t* sid, int timeout);
-int     bplib_store_ram_retrieve       (int handle, void** data, int* size, bp_sid_t sid, int timeout);
+int     bplib_store_ram_dequeue        (int handle, bp_object_t** object, int timeout);
+int     bplib_store_ram_retrieve       (int handle, bp_sid_t sid, bp_object_t** object, int timeout);
+int     bplib_store_ram_release        (int handle, bp_sid_t sid);
 int     bplib_store_ram_relinquish     (int handle, bp_sid_t sid);
 int     bplib_store_ram_getcount       (int handle);
 
@@ -48,4 +49,4 @@ int     bplib_store_ram_getcount       (int handle);
 } // extern "C"
 #endif 
 
-#endif /* __BPLIB_STORE_RAM__ */
+#endif /* _bplib_store_ram_h_ */

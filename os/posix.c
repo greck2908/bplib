@@ -1,13 +1,13 @@
 /************************************************************************
  * File: posix.c
  *
- *  Copyright 2019 United States Government as represented by the 
- *  Administrator of the National Aeronautics and Space Administration. 
- *  All Other Rights Reserved.  
+ *  Copyright 2019 United States Government as represented by the
+ *  Administrator of the National Aeronautics and Space Administration.
+ *  All Other Rights Reserved.
  *
  *  This software was created at NASA's Goddard Space Flight Center.
- *  This software is governed by the NASA Open Source Agreement and may be 
- *  used, distributed and modified only pursuant to the terms of that 
+ *  This software is governed by the NASA Open Source Agreement and may be
+ *  used, distributed and modified only pursuant to the terms of that
  *  agreement.
  *
  * Maintainer(s):
@@ -29,7 +29,6 @@
 #include <unistd.h>
 
 #include "bplib.h"
-#include "bplib_os.h"
 
 /******************************************************************************
  DEFINES
@@ -52,9 +51,11 @@ typedef struct {
  FILE DATA
  ******************************************************************************/
 
-bplib_os_lock_t*    locks[BP_MAX_LOCKS] = {0};
-pthread_mutex_t     lock_of_locks;
-struct timespec     prevnow;
+static bplib_os_lock_t*     locks[BP_MAX_LOCKS] = {0};
+static pthread_mutex_t      lock_of_locks;
+static struct timespec      prevnow;
+static size_t               current_memory_allocated = 0;
+static size_t               highest_memory_allocated = 0;
 
 /******************************************************************************
  EXPORTED FUNCTIONS
@@ -69,7 +70,10 @@ void bplib_os_init()
     pthread_mutexattr_init(&locks_attr);
     pthread_mutexattr_settype(&locks_attr, PTHREAD_MUTEX_RECURSIVE);
     pthread_mutex_init(&lock_of_locks, &locks_attr);
+
     clock_gettime(CLOCK_REALTIME, &prevnow);
+
+    srand((unsigned int)prevnow.tv_nsec);
 }
 
 /*--------------------------------------------------------------------------------------
@@ -77,7 +81,7 @@ void bplib_os_init()
  *
  * 	Returns - the error code passed in (for convenience)
  *-------------------------------------------------------------------------------------*/
-int bplib_os_log(const char* file, unsigned int line, int error, const char* fmt, ...)
+int bplib_os_log(const char* file, unsigned int line, uint32_t* flags, uint32_t event, const char* fmt, ...)
 {
     char formatted_string[BP_MAX_LOG_ENTRY_SIZE];
     char log_message[BP_MAX_LOG_ENTRY_SIZE];
@@ -90,22 +94,49 @@ int bplib_os_log(const char* file, unsigned int line, int error, const char* fmt
     vlen = vsnprintf(formatted_string, BP_MAX_LOG_ENTRY_SIZE - 1, fmt, args);
     msglen = vlen < BP_MAX_LOG_ENTRY_SIZE - 1 ? vlen : BP_MAX_LOG_ENTRY_SIZE - 1;
     va_end(args);
-    if (msglen < 0) return error; /* nothing to do */
-    formatted_string[msglen] = '\0';
 
-    /* Chop Path in Filename */
-    pathptr = strrchr(file, '/');
-    if(pathptr) pathptr++;
-    else pathptr = (char*)file;
+    /* Log Message */
+    if(msglen > 0)
+    {
+        formatted_string[msglen] = '\0';
 
-    /* Create Log Message */
-    snprintf(log_message, BP_MAX_LOG_ENTRY_SIZE, "%s:%d:%d:%s", pathptr, line, error, formatted_string);
-    
-    /* Display Log Message */
-    printf("%s", log_message);
+        /* Chop Path in Filename */
+        pathptr = strrchr(file, '/');
+        if(pathptr) pathptr++;
+        else pathptr = (char*)file;
 
-    /* Return Error Code */
-    return error;
+        /* Create Log Message */
+        if(event != BP_FLAG_DIAGNOSTIC)
+        {
+            msglen = snprintf(log_message, BP_MAX_LOG_ENTRY_SIZE, "%s:%u:%08X:%s", pathptr, line, event, formatted_string);
+            if(msglen > (BP_MAX_LOG_ENTRY_SIZE - 1))
+            {
+                log_message[BP_MAX_LOG_ENTRY_SIZE - 1] = '#';
+            }
+        }
+        else
+        {
+            msglen = snprintf(log_message, BP_MAX_LOG_ENTRY_SIZE, "%s:%u:%s", pathptr, line, formatted_string);
+            if(msglen > (BP_MAX_LOG_ENTRY_SIZE - 1))
+            {
+                log_message[BP_MAX_LOG_ENTRY_SIZE - 1] = '#';
+            }
+        }
+
+        /* Display Log Message */
+        printf("%s", log_message);
+    }
+
+    /* Set Event Flag and Return */
+    if(event > 0)
+    {
+        if(flags) *flags |= event;
+        return BP_ERROR;
+    }
+    else
+    {
+        return BP_SUCCESS;
+    }
 }
 
 /*--------------------------------------------------------------------------------------
@@ -113,7 +144,7 @@ int bplib_os_log(const char* file, unsigned int line, int error, const char* fmt
  *-------------------------------------------------------------------------------------*/
 int bplib_os_systime(unsigned long* sysnow)
 {
-    int status = BP_OS_SUCCESS;
+    int status = BP_SUCCESS;
 
     /* Get System Time */
     struct timespec now;
@@ -121,15 +152,15 @@ int bplib_os_systime(unsigned long* sysnow)
     unsigned long elapsed_secs = now.tv_sec - UNIX_SECS_AT_2000;
     unsigned long previous_secs = prevnow.tv_sec - UNIX_SECS_AT_2000;
     prevnow = now;
-    
+
     /* Return Time */
     if(sysnow) *sysnow = elapsed_secs;
-    
+
     /* Check Reliability */
     if( (now.tv_sec < UNIX_SECS_AT_2000) || /* time nonsensical */
         (previous_secs > elapsed_secs) )    /* time going backwards */
     {
-        status = BP_OS_ERROR;
+        status = BP_ERROR;
     }
 
     /* Return Status */
@@ -145,32 +176,43 @@ void bplib_os_sleep(int seconds)
 }
 
 /*--------------------------------------------------------------------------------------
+ * bplib_os_random -
+ *-------------------------------------------------------------------------------------*/
+uint32_t bplib_os_random(void)
+{
+    return (uint32_t)rand();
+}
+
+/*--------------------------------------------------------------------------------------
  * bplib_os_createlock -
  *-------------------------------------------------------------------------------------*/
 int bplib_os_createlock(void)
 {
-    int i;
     int handle = BP_INVALID_HANDLE;
-    
+
     pthread_mutex_lock(&lock_of_locks);
     {
+        int i;
         for(i = 0; i < BP_MAX_LOCKS; i++)
         {
             if(locks[i] == NULL)
             {
-                locks[i] = (bplib_os_lock_t*)malloc(sizeof(bplib_os_lock_t));
-                pthread_mutexattr_t attr;
-                pthread_mutexattr_init(&attr);
-                pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
-                pthread_mutex_init(&locks[i]->mutex, &attr);
-                pthread_cond_init(&locks[i]->cond, NULL);
-                handle = i;
-                break;
+                locks[i] = (bplib_os_lock_t*)bplib_os_calloc(sizeof(bplib_os_lock_t));
+                if(locks[i] != NULL)
+                {
+                    pthread_mutexattr_t attr;
+                    pthread_mutexattr_init(&attr);
+                    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+                    pthread_mutex_init(&locks[i]->mutex, &attr);
+                    pthread_cond_init(&locks[i]->cond, NULL);
+                    handle = i;
+                    break;
+                }
             }
         }
     }
     pthread_mutex_unlock(&lock_of_locks);
-    
+
     return handle;
 }
 
@@ -183,9 +225,9 @@ void bplib_os_destroylock(int handle)
     {
         if(locks[handle] != NULL)
         {
-            pthread_mutex_destroy(&locks[handle]->mutex); 
+            pthread_mutex_destroy(&locks[handle]->mutex);
             pthread_cond_destroy(&locks[handle]->cond);
-            free(locks[handle]);
+            bplib_os_free(locks[handle]);
             locks[handle] = NULL;
         }
     }
@@ -228,7 +270,7 @@ int bplib_os_waiton(int handle, int timeout_ms)
     {
         /* Block Forever until Success */
         status = pthread_cond_wait(&locks[handle]->cond, &locks[handle]->mutex);
-        if(status != 0) status = BP_OS_ERROR;
+        if(status != 0) status = BP_ERROR;
         else            status = BP_SUCCESS;
     }
     else if(timeout_ms > 0)
@@ -246,14 +288,14 @@ int bplib_os_waiton(int handle, int timeout_ms)
 
         /* Block on Timed Wait and Update Timeout */
         status = pthread_cond_timedwait(&locks[handle]->cond, &locks[handle]->mutex, &ts);
-        if(status == ETIMEDOUT) status = BP_OS_TIMEOUT;
+        if(status == ETIMEDOUT) status = BP_TIMEOUT;
         else                    status = BP_SUCCESS;
     }
     else /* timeout_ms = 0 */
     {
         /* conditional does not support a non-blocking attempt
          * so treat it as an immediate timeout */
-        status = BP_OS_TIMEOUT;
+        status = BP_TIMEOUT;
     }
 
     /* Return Status */
@@ -291,4 +333,71 @@ int bplib_os_strnlen(const char* str, int maxlen)
         }
     }
     return maxlen;
+}
+
+/*----------------------------------------------------------------------------
+ * bplib_os_calloc
+ *----------------------------------------------------------------------------*/
+void* bplib_os_calloc(size_t size)
+{
+    /* Allocate Memory Block */
+    size_t block_size = size + sizeof(size_t);
+    uint8_t* mem_ptr = (uint8_t*)calloc(block_size, 1);
+    if(mem_ptr)
+    {
+        /* Prepend Amount */
+        size_t* size_ptr = (size_t*)mem_ptr;
+        *size_ptr = block_size;
+
+        /* Update Statistics */
+        current_memory_allocated += block_size;
+        if(current_memory_allocated > highest_memory_allocated)
+        {
+            highest_memory_allocated = current_memory_allocated;
+        }
+
+        /* Return User Block */
+        return (mem_ptr + sizeof(size_t));
+    }
+    else
+    {
+        return NULL;
+    }
+}
+
+/*----------------------------------------------------------------------------
+ * bplib_os_free
+ *----------------------------------------------------------------------------*/
+void bplib_os_free(void* ptr)
+{
+    if(ptr)
+    {
+        uint8_t* mem_ptr = (uint8_t*)ptr;
+
+        /* Read Amount */
+        size_t* size_ptr = (size_t*)((uint8_t*)mem_ptr - sizeof(size_t));
+        size_t block_size = *size_ptr;
+
+        /* Update Statistics */
+        current_memory_allocated -= block_size;
+
+        /* Free Memory Block */
+        free(mem_ptr - sizeof(size_t));
+    }
+}
+
+/*----------------------------------------------------------------------------
+ * bplib_os_memused - how many bytes of memory currently allocated
+ *----------------------------------------------------------------------------*/
+size_t bplib_os_memused(void)
+{
+    return current_memory_allocated;
+}
+
+/*----------------------------------------------------------------------------
+ * bplib_os_memhigh - the most total bytes in allocation at any given time
+ *----------------------------------------------------------------------------*/
+size_t bplib_os_memhigh(void)
+{
+    return highest_memory_allocated;
 }
